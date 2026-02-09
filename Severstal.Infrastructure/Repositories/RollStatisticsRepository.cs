@@ -63,8 +63,26 @@ namespace Severstal.Infrastructure.Repositories
         {
             await using var context = await CreateContextAsync(cancellationToken);
             var query = AggregateRolls(from, to, context);
-            var timeDiff = await query.Select(r => (r.RemovedDate - r.AddedDate)).MaxAsync(cancellationToken);
-            return timeDiff?.TotalDays ?? 0;
+            var dates = await query
+                .Where(r => r.RemovedDate != null) 
+                .Select(r => new
+                {
+                    AddedDate = r.AddedDate,
+                    RemovedDate = r.RemovedDate!.Value
+                })
+                .ToListAsync(cancellationToken);
+
+            if (!dates.Any())
+                return 0d;
+
+            double maxGap = double.MinValue;
+            foreach(var date in dates)
+            {
+                double curGap = (date.RemovedDate - date.AddedDate).TotalDays;
+                if (curGap > maxGap)
+                    maxGap = curGap;
+            }
+            return maxGap == double.MinValue ? 0d : maxGap;
         }
 
         public async Task<double> GetMaxLengthAsync(DateTime from, DateTime to,
@@ -91,8 +109,26 @@ namespace Severstal.Infrastructure.Repositories
             await using var context = await CreateContextAsync(cancellationToken);
 
             var query = AggregateRolls(from, to, context);
-            var timeDiff = await query.Select(r => (r.RemovedDate - r.AddedDate)).MinAsync(cancellationToken);
-            return timeDiff?.TotalDays ?? 0;
+            var dates = await query
+                .Where(r => r.RemovedDate != null)
+                .Select(r => new
+                {
+                    AddedDate = r.AddedDate,
+                    RemovedDate = r.RemovedDate!.Value
+                })
+                .ToListAsync(cancellationToken);
+
+            if (!dates.Any())
+                return 0d;
+
+            double minGap = double.MaxValue;
+            foreach (var date in dates)
+            {
+                double curGap = (date.RemovedDate - date.AddedDate).TotalDays;
+                if (curGap < minGap)
+                    minGap = curGap;
+            }
+            return minGap == double.MaxValue ? 0d : minGap;
         }
 
         public async Task<double> GetMinLengthAsync(DateTime from, DateTime to,
@@ -119,7 +155,7 @@ namespace Severstal.Infrastructure.Repositories
             await using var context = await CreateContextAsync(cancellationToken);
 
             return await context.Rolls
-                .Where(r => r.RemovedDate != null &&
+                .Where(r => r.RemovedDate.HasValue &&
                        r.RemovedDate >= from &&
                        r.RemovedDate <= to)
                 .CountAsync(cancellationToken);
